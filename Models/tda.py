@@ -5,7 +5,6 @@ from ripser import Rips
 from ripser import ripser
 from pathlib import Path
 import random
-from numpy.lib.stride_tricks import sliding_window_view
 
 
 path_to_data = "../Data"
@@ -71,22 +70,48 @@ def make_dataset(window_length = window_length, window_overlap = window_overlap,
     df["current_hits"] = cache_hits(df["reindexed"])
     return df.reset_index()
 
-
-previous_hits_results = pd.DataFrame(columns=["window_length", "overlap", "number_windows", "train_mse", "test_mse", "val_mse"])
+tda_results = pd.DataFrame(columns=["window_length", "overlap", "number_windows", "train_mse", "test_mse", "val_mse"])
 
 n = 150 # Number prediction
 
+num_h_0 = 40
+num_h_1 = 20
 
-for window_length in range(50, 300, 50):
-    for overlap in range(20, 101, 10):
+inf_dummy = 1000 # A number it can't possibly see to replace the inf which random forest dislikes
+
+def prep_as_tda(data):
+    x = list(range(0, len(data)))
+    data = np.array(list(zip(x,data)))
+    transformed =  ripser(data)['dgms']
+    h_zeros = np.transpose(transformed[0])[1].tolist()
+    h_ones = transformed[1]
+    count_repeats = h_zeros.count(1)
+    count_sqrt_2 = h_zeros.count(1.4142135381698608)
+    sample_h_0 = sorted(np.random.choice(np.transpose(transformed[0])[1], num_h_0))
+    count_h_1 = len(h_ones)
+
+    if count_h_1 == 0:
+        sample_h_1 = np.zeros((num_h_1, 2)) # If nothing, add nothing
+    else:
+        sample_h_1 = transformed[1][np.random.choice(len(transformed[1]), num_h_1)]
+
+    sample_h_1 = list(sample_h_1.flatten())
+    vals = np.array([count_repeats] + [count_sqrt_2] + [count_h_1] + sample_h_0 + sample_h_1)
+    return np.nan_to_num(vals, posinf=inf_dummy)
+
+for window_length in range(50, 251, 50):
+    for overlap in range(20, 61, 10):
         if overlap >= window_length:
             continue
         # Setup dataset
-        previous_hits = make_dataset(window_length=window_length, window_overlap=window_overlap, predict_next = 150, max_adress_sample = 25000)
-        for number_windows in range(1, 15):
+        previous_hits = make_dataset(window_length=window_length, window_overlap=overlap, predict_next = 150, max_adress_sample = 20000)
+        feature_prep = np.array([prep_as_tda(x) for x in previous_hits["reindexed"]])
+        for number_windows in range(1, 6):
             print("window_length", window_length, "overlap", overlap, "number_windows", number_windows)
             keep = np.equal(previous_hits["file"].to_numpy()[number_windows:], previous_hits["file"].to_numpy() [:(number_windows * -1)])
-            features = sliding_window_view(previous_hits["current_hits"], number_windows)[:-1][keep]
+            features = feature_prep
+            features = np.array([np.concatenate(features[l:l+number_windows]) for l in range(len(features) - number_windows)])
+            features = features[keep]
             labels = previous_hits["future_hits"].to_numpy()[number_windows :][keep]
             train_test =  previous_hits["dataset"].to_numpy()[number_windows:][keep] == "Baleen"
             split_index = round(sum(train_test) * 0.8)
@@ -97,7 +122,7 @@ for window_length in range(50, 300, 50):
             test_labels = labels[train_test][split_index:]
             val_labels = labels[np.logical_not(train_test)]
             rf = RandomForestRegressor(n_estimators = 1000, random_state = 42, n_jobs=-1)
-            
+            # Train the model on training data
             rf.fit(train_features, train_labels)
             train_predictions = rf.predict(train_features)
             test_predictions = rf.predict(test_features)
@@ -105,8 +130,7 @@ for window_length in range(50, 300, 50):
             train_error = np.mean((train_predictions - train_labels)**2)
             test_error = np.mean((test_predictions - test_labels)**2)
             val_error = np.mean((val_predictions - val_labels)**2)
-            previous_hits_results.loc[len(previous_hits_results.index)] = [window_length, overlap, number_windows, train_error, test_error, val_error] 
-            previous_hits_results.to_csv("modeling_results/previous_hits.csv")
+            tda_results.loc[len(tda_results.index)] = [window_length, overlap, number_windows, train_error, test_error, val_error] 
+            tda_results.to_csv("Results/tda.csv")
             
-previous_hits_results
-
+tda_results

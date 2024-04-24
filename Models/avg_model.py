@@ -42,5 +42,5 @@ for length in [50, 100, 150, 250, 500, 1000]:
     avg_model = pd.concat([avg_model, pd.DataFrame([[length,avg_hits, train_hits, test_hits, valid_hits]], columns=avg_model.columns)])
 
 
-avg_model.to_csv("modeling_results/avg_model.csv")
+avg_model.to_csv("Results/avg_model.csv")
 print(avg_model.to_latex(index=False, float_format="{:.3f}".format))

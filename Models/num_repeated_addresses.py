@@ -72,24 +72,21 @@ def make_dataset(window_length = window_length, window_overlap = window_overlap,
     return df.reset_index()
 
 
-previous_access_results = pd.DataFrame(columns=["window_length", "overlap", "number_windows", "train_mse", "test_mse", "val_mse"])
-
+previous_hits_results = pd.DataFrame(columns=["window_length", "overlap", "number_windows", "train_mse", "test_mse", "val_mse"])
 
 n = 150 # Number prediction
 
 
 for window_length in range(50, 300, 50):
-    for overlap in range(20, 100, 10):
+    for overlap in range(20, 101, 10):
         if overlap >= window_length:
             continue
         # Setup dataset
-        previous_hits = make_dataset(window_length=window_length, window_overlap =window_overlap, predict_next = 150, max_adress_sample = 15000)
-        for number_windows in range(1, 6):
+        previous_hits = make_dataset(window_length=window_length, window_overlap=window_overlap, predict_next = 150, max_adress_sample = 25000)
+        for number_windows in range(1, 15):
             print("window_length", window_length, "overlap", overlap, "number_windows", number_windows)
             keep = np.equal(previous_hits["file"].to_numpy()[number_windows:], previous_hits["file"].to_numpy() [:(number_windows * -1)])
-            features = list(sliding_window_view(previous_hits["reindexed"], number_windows))
-            features = np.array([np.concatenate(x).ravel() for x in features])
-            features = features[:-1][keep]
+            features = sliding_window_view(previous_hits["current_hits"], number_windows)[:-1][keep]
             labels = previous_hits["future_hits"].to_numpy()[number_windows :][keep]
             train_test =  previous_hits["dataset"].to_numpy()[number_windows:][keep] == "Baleen"
             split_index = round(sum(train_test) * 0.8)
@@ -99,8 +96,8 @@ for window_length in range(50, 300, 50):
             train_labels = labels[train_test][:split_index]
             test_labels = labels[train_test][split_index:]
             val_labels = labels[np.logical_not(train_test)]
-            rf = RandomForestRegressor(n_estimators = 1000, random_state = 42, n_jobs = -1)
-            # Train the model on training data
+            rf = RandomForestRegressor(n_estimators = 1000, random_state = 42, n_jobs=-1)
+            
             rf.fit(train_features, train_labels)
             train_predictions = rf.predict(train_features)
             test_predictions = rf.predict(test_features)
@@ -108,8 +105,8 @@ for window_length in range(50, 300, 50):
             train_error = np.mean((train_predictions - train_labels)**2)
             test_error = np.mean((test_predictions - test_labels)**2)
             val_error = np.mean((val_predictions - val_labels)**2)
-            previous_access_results.loc[len(previous_access_results.index)] = [window_length, overlap, number_windows, train_error, test_error, val_error] 
-            previous_access_results.to_csv("modeling_results/previous_access.csv")
+            previous_hits_results.loc[len(previous_hits_results.index)] = [window_length, overlap, number_windows, train_error, test_error, val_error] 
+            previous_hits_results.to_csv("Results/previous_hits.csv")
+            
+previous_hits_results
 
-        
-previous_access_results
